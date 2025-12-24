@@ -1058,6 +1058,19 @@ export default function ChatPanel({
         setShowNewChatDialog(false)
     }, [clearDiagram, handleFileChange, setMessages, setSessionId])
 
+    const applyAgentXml = useCallback(
+        (xml: string) => {
+            const validationError = onDisplayChart(xml)
+            if (validationError) {
+                toast.error(validationError)
+                return
+            }
+            chartXMLRef.current = xml
+            onExport()
+        },
+        [onDisplayChart, onExport],
+    )
+
     const handleInputChange = (
         e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
     ) => {

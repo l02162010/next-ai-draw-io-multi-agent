@@ -44,6 +44,7 @@ next-env.d.ts
 push-via-ec2.sh
 .claude/
 .playwright-mcp/
+
 # Cloudflare
 .dev.vars
 .open-next/

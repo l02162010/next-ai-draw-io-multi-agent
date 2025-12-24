@@ -1302,6 +1302,14 @@ export default function ChatPanel({
             selectedAgentIds.includes(model.id) &&
             model.id !== modelConfig.selectedModelId,
     )
+    const mergeModel =
+        (mergeModelId &&
+            modelConfig.models.find((m) => m.id === mergeModelId)) ||
+        (modelConfig.selectedModelId
+            ? modelConfig.models.find(
+                  (m) => m.id === modelConfig.selectedModelId,
+              )
+            : undefined)
 
     // Collapsed view (desktop only)
     if (!isVisible && !isMobile) {

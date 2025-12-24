@@ -918,6 +918,21 @@ export default function ChatPanel({
     const onFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         const isProcessing = status === "streaming" || status === "submitted"
+        if (requireClientModelConfig && !modelConfig.selectedModelId) {
+            toast.error(
+                dict.errors?.modelRequired ||
+                    "Select a model in AI Model Configuration first.",
+            )
+            setShowModelConfigDialog(true)
+            return
+        }
+        if (multiAgentEnabled && selectedAgentIds.length === 0) {
+            toast.error(
+                dict.errors?.agentsRequired ||
+                    "Select at least one agent for multi-agent run.",
+            )
+            return
+        }
         if (input.trim() && !isProcessing) {
             // Check if input matches a cached example (only when no messages yet)
             if (messages.length === 0) {
@@ -1000,6 +1015,7 @@ export default function ChatPanel({
                 saveXmlSnapshots()
 
                 sendChatMessage(parts, chartXml, previousXml, sessionId)
+                startMultiAgentRun(parts, chartXml, previousXml, sessionId)
 
                 // Token count is tracked in onFinish with actual server usage
                 setInput("")

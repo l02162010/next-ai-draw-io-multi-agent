@@ -18,7 +18,10 @@ import { FaGithub } from "react-icons/fa"
 import { Toaster, toast } from "sonner"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import { ChatInput } from "@/components/chat-input"
+import { AgentResultsPanel } from "@/components/agent-results-panel"
+import { AgentRunner } from "@/components/agent-runner"
 import { ModelConfigDialog } from "@/components/model-config-dialog"
+import { MultiAgentControls } from "@/components/multi-agent-controls"
 import { ResetWarningModal } from "@/components/reset-warning-modal"
 import { SettingsDialog } from "@/components/settings-dialog"
 import {
@@ -33,6 +36,7 @@ import { getSelectedAIConfig, useModelConfig } from "@/hooks/use-model-config"
 import { getApiEndpoint } from "@/lib/base-path"
 import { findCachedResponse } from "@/lib/cached-responses"
 import { isPdfFile, isTextFile } from "@/lib/pdf-utils"
+import { STORAGE_KEYS } from "@/lib/storage"
 import { type FileData, useFileProcessor } from "@/lib/use-file-processor"
 import { useQuotaManager } from "@/lib/use-quota-manager"
 import { formatXML } from "@/lib/utils"
@@ -61,6 +65,28 @@ interface ChatMessage {
     role: string
     parts?: MessagePart[]
     [key: string]: unknown
+}
+
+type AgentStatus = "idle" | "running" | "success" | "error"
+
+interface AgentRequest {
+    runId: string
+    parts: any[]
+    xml: string
+    previousXml: string
+    sessionId: string
+    accessCode: string
+    minimalStyle: boolean
+}
+
+interface AgentResultState {
+    id: string
+    label: string
+    status: AgentStatus
+    xml?: string
+    error?: string
+    lastRunId?: string
+    isMerge?: boolean
 }
 
 interface ChatPanelProps {
@@ -160,12 +186,27 @@ export default function ChatPanel({
 
     // Model configuration hook
     const modelConfig = useModelConfig()
+    const [requireClientModelConfig, setRequireClientModelConfig] =
+        useState(false)
     const [input, setInput] = useState("")
     const [dailyRequestLimit, setDailyRequestLimit] = useState(0)
     const [dailyTokenLimit, setDailyTokenLimit] = useState(0)
     const [tpmLimit, setTpmLimit] = useState(0)
     const [showNewChatDialog, setShowNewChatDialog] = useState(false)
     const [minimalStyle, setMinimalStyle] = useState(false)
+    const [multiAgentEnabled, setMultiAgentEnabled] = useState(false)
+    const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([])
+    const [mergeModelId, setMergeModelId] = useState<string | undefined>(
+        undefined,
+    )
+    const [agentResults, setAgentResults] = useState<
+        Record<string, AgentResultState>
+    >({})
+    const [agentRequests, setAgentRequests] = useState<
+        Record<string, AgentRequest | null>
+    >({})
+    const [mergeRequest, setMergeRequest] = useState<AgentRequest | null>(null)
+    const [mergeResult, setMergeResult] = useState<AgentResultState | null>(null)
 
     // Restore input from sessionStorage on mount (when ChatPanel remounts due to key change)
     useEffect(() => {
@@ -183,9 +224,53 @@ export default function ChatPanel({
                 setDailyRequestLimit(data.dailyRequestLimit || 0)
                 setDailyTokenLimit(data.dailyTokenLimit || 0)
                 setTpmLimit(data.tpmLimit || 0)
+                setRequireClientModelConfig(
+                    data.requireClientModelConfig === true,
+                )
             })
             .catch(() => {})
     }, [])
+
+    // Restore multi-agent settings
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        const enabled =
+            localStorage.getItem(STORAGE_KEYS.multiAgentEnabled) === "true"
+        const storedIds = localStorage.getItem(STORAGE_KEYS.multiAgentIds)
+        const storedMerge = localStorage.getItem(STORAGE_KEYS.mergeModelId)
+        setMultiAgentEnabled(enabled)
+        if (storedIds) {
+            try {
+                const parsed = JSON.parse(storedIds)
+                if (Array.isArray(parsed)) {
+                    setSelectedAgentIds(parsed)
+                }
+            } catch {
+                setSelectedAgentIds([])
+            }
+        }
+        if (storedMerge) {
+            setMergeModelId(storedMerge)
+        }
+    }, [])
+
+    // Persist multi-agent settings
+    useEffect(() => {
+        if (typeof window === "undefined") return
+        localStorage.setItem(
+            STORAGE_KEYS.multiAgentEnabled,
+            String(multiAgentEnabled),
+        )
+        localStorage.setItem(
+            STORAGE_KEYS.multiAgentIds,
+            JSON.stringify(selectedAgentIds),
+        )
+        if (mergeModelId) {
+            localStorage.setItem(STORAGE_KEYS.mergeModelId, mergeModelId)
+        } else {
+            localStorage.removeItem(STORAGE_KEYS.mergeModelId)
+        }
+    }, [mergeModelId, multiAgentEnabled, selectedAgentIds])
 
     // Quota management using extracted hook
     const quotaManager = useQuotaManager({
@@ -193,6 +278,16 @@ export default function ChatPanel({
         dailyTokenLimit,
         tpmLimit,
     })
+
+    // Keep selected agent IDs in sync with available models
+    useEffect(() => {
+        if (!modelConfig.isLoaded) return
+        const validIds = new Set(modelConfig.models.map((m) => m.id))
+        setSelectedAgentIds((prev) => prev.filter((id) => validIds.has(id)))
+        if (mergeModelId && !validIds.has(mergeModelId)) {
+            setMergeModelId(undefined)
+        }
+    }, [mergeModelId, modelConfig.isLoaded, modelConfig.models])
 
     // Generate a unique session ID for Langfuse tracing (restore from localStorage if available)
     const [sessionId, setSessionId] = useState(() => {
@@ -231,6 +326,19 @@ export default function ChatPanel({
     // Key: toolCallId, Value: original XML before any operations applied
     const editDiagramOriginalXmlRef = useRef<Map<string, string>>(new Map())
 
+    // Force model configuration if required by server
+    useEffect(() => {
+        if (!requireClientModelConfig) return
+        if (!modelConfig.isLoaded) return
+        if (!modelConfig.selectedModelId) {
+            setShowModelConfigDialog(true)
+        }
+    }, [
+        modelConfig.isLoaded,
+        modelConfig.selectedModelId,
+        requireClientModelConfig,
+    ])
+
     // Debounce timeout for localStorage writes (prevents blocking during streaming)
     const localStorageDebounceRef = useRef<ReturnType<
         typeof setTimeout
@@ -246,6 +354,107 @@ export default function ChatPanel({
         onFetchChart,
         onExport,
     })
+
+    const getModelById = useCallback(
+        (id: string) => modelConfig.models.find((m) => m.id === id),
+        [modelConfig.models],
+    )
+
+    const upsertAgentResult = useCallback(
+        (id: string, updates: Partial<AgentResultState>) => {
+            setAgentResults((prev) => {
+                const model = getModelById(id)
+                const label = model?.modelId || updates.label || "Unknown"
+                const existing: AgentResultState = prev[id] || {
+                    id,
+                    label,
+                    status: "idle",
+                }
+                return {
+                    ...prev,
+                    [id]: { ...existing, label, ...updates },
+                }
+            })
+        },
+        [getModelById],
+    )
+
+    const updateAgentStatus = useCallback(
+        (id: string, status: AgentStatus, runId: string) => {
+            setAgentResults((prev) => {
+                const model = getModelById(id)
+                const label = model?.modelId || "Unknown"
+                const existing: AgentResultState = prev[id] || {
+                    id,
+                    label,
+                    status: "idle",
+                }
+                if (existing.lastRunId && existing.lastRunId !== runId) {
+                    return prev
+                }
+                return {
+                    ...prev,
+                    [id]: { ...existing, label, status },
+                }
+            })
+        },
+        [getModelById],
+    )
+
+    const updateAgentResult = useCallback(
+        (id: string, xml: string, runId: string) => {
+            setAgentResults((prev) => {
+                const model = getModelById(id)
+                const label = model?.modelId || "Unknown"
+                const existing: AgentResultState = prev[id] || {
+                    id,
+                    label,
+                    status: "idle",
+                }
+                if (existing.lastRunId && existing.lastRunId !== runId) {
+                    return prev
+                }
+                return {
+                    ...prev,
+                    [id]: {
+                        ...existing,
+                        label,
+                        status: "success",
+                        xml,
+                        error: undefined,
+                    },
+                }
+            })
+        },
+        [getModelById],
+    )
+
+    const updateAgentError = useCallback(
+        (id: string, message: string, runId: string) => {
+            setAgentResults((prev) => {
+                const model = getModelById(id)
+                const label = model?.modelId || "Unknown"
+                const existing: AgentResultState = prev[id] || {
+                    id,
+                    label,
+                    status: "idle",
+                }
+                if (existing.lastRunId && existing.lastRunId !== runId) {
+                    return prev
+                }
+                return {
+                    ...prev,
+                    [id]: {
+                        ...existing,
+                        label,
+                        status: "error",
+                        error: message,
+                    },
+                }
+            })
+        },
+        [getModelById],
+    )
 
     const {
         messages,
@@ -376,6 +585,21 @@ export default function ChatPanel({
 
             // DEBUG: Log finish reason to diagnose truncation
             console.log("[onFinish] finishReason:", metadata?.finishReason)
+
+            if (
+                multiAgentEnabled &&
+                modelConfig.selectedModelId &&
+                selectedAgentIds.includes(modelConfig.selectedModelId)
+            ) {
+                const xml = chartXMLRef.current
+                if (xml) {
+                    upsertAgentResult(modelConfig.selectedModelId, {
+                        status: "success",
+                        xml,
+                        error: undefined,
+                    })
+                }
+            }
         },
         sendAutomaticallyWhen: ({ messages }) => {
             const isInContinuationMode = partialXmlRef.current.length > 0
@@ -548,6 +772,148 @@ export default function ChatPanel({
         return () =>
             window.removeEventListener("beforeunload", handleBeforeUnload)
     }, [sessionId])
+
+    const startMultiAgentRun = useCallback(
+        (
+            parts: any[],
+            chartXml: string,
+            previousXml: string,
+            sessionId: string,
+        ) => {
+            if (!multiAgentEnabled) return
+            if (selectedAgentIds.length === 0) {
+                toast.error(dict.errors?.agentsRequired || "Select an agent.")
+                return
+            }
+
+            const runId = `agents-${Date.now()}`
+            const accessCode = getSelectedAIConfig().accessCode
+            const primaryId = modelConfig.selectedModelId
+            const backgroundIds = selectedAgentIds.filter(
+                (id) => id !== primaryId,
+            )
+
+            setAgentResults((prev) => {
+                const next = { ...prev }
+                for (const id of selectedAgentIds) {
+                    const model = getModelById(id)
+                    const label = model?.modelId || "Unknown"
+                    next[id] = {
+                        id,
+                        label,
+                        status: "running",
+                        lastRunId: runId,
+                        error: undefined,
+                        xml: undefined,
+                    }
+                }
+                return next
+            })
+
+            setAgentRequests((prev) => {
+                const next = { ...prev }
+                for (const id of backgroundIds) {
+                    next[id] = {
+                        runId,
+                        parts,
+                        xml: chartXml,
+                        previousXml,
+                        sessionId,
+                        accessCode,
+                        minimalStyle,
+                    }
+                }
+                return next
+            })
+
+            if (primaryId && selectedAgentIds.includes(primaryId)) {
+                upsertAgentResult(primaryId, {
+                    status: "running",
+                    lastRunId: runId,
+                })
+            }
+        },
+        [
+            dict.errors,
+            getModelById,
+            minimalStyle,
+            modelConfig.selectedModelId,
+            multiAgentEnabled,
+            selectedAgentIds,
+            upsertAgentResult,
+        ],
+    )
+
+    const handleMerge = useCallback(() => {
+        if (!multiAgentEnabled) return
+        const results = Object.values(agentResults).filter((r) => r.xml)
+        if (results.length < 2) {
+            toast.error(
+                dict.errors?.agentsRequired || "Select at least two agents.",
+            )
+            return
+        }
+
+        const mergeId = mergeModelId || modelConfig.selectedModelId
+        if (!mergeId) {
+            toast.error(
+                dict.errors?.mergeModelRequired ||
+                    "Select a merge model first.",
+            )
+            return
+        }
+
+        const mergeModel = getModelById(mergeId)
+        if (!mergeModel) {
+            toast.error("Merge model not found.")
+            return
+        }
+
+        const runId = `merge-${Date.now()}`
+        const accessCode = getSelectedAIConfig().accessCode
+        const promptLines = [
+            "Merge the following diagram XMLs into a single coherent architecture diagram.",
+            "Keep IDs unique, deduplicate repeated components, and preserve clear layout.",
+            "Return the final diagram using display_diagram only.",
+            "",
+        ]
+        results.forEach((result, index) => {
+            promptLines.push(
+                `Diagram ${index + 1} (${result.label}):`,
+                "```xml",
+                result.xml || "",
+                "```",
+                "",
+            )
+        })
+
+        setMergeResult({
+            id: "merge",
+            label: `${mergeModel.modelId} (merge)`,
+            status: "running",
+            isMerge: true,
+            lastRunId: runId,
+        })
+
+        setMergeRequest({
+            runId,
+            parts: [{ type: "text", text: promptLines.join("\n") }],
+            xml: "",
+            previousXml: "",
+            sessionId,
+            accessCode,
+            minimalStyle,
+        })
+    }, [
+        agentResults,
+        dict.errors,
+        getModelById,
+        mergeModelId,
+        minimalStyle,
+        modelConfig.selectedModelId,
+        multiAgentEnabled,
+        sessionId,
+    ])
 
     const onFormSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()

@@ -28,4 +28,9 @@ export const STORAGE_KEYS = {
     // Multi-model configuration
     modelConfigs: "next-ai-draw-io-model-configs",
     selectedModelId: "next-ai-draw-io-selected-model-id",
+
+    // Multi-agent settings
+    multiAgentEnabled: "next-ai-draw-io-multi-agent-enabled",
+    multiAgentIds: "next-ai-draw-io-multi-agent-ids",
+    mergeModelId: "next-ai-draw-io-merge-model-id",
 } as const

@@ -132,6 +132,9 @@
         "unsupportedType": "\"{name}\" is not a supported file type",
         "filesRejected": "{count} files rejected:",
         "andMore": "...and {count} more",
+        "modelRequired": "Select a model in AI Model Configuration first.",
+        "agentsRequired": "Select at least one agent for multi-agent run.",
+        "mergeModelRequired": "Select a merge model for collaboration.",
         "invalidAccessCode": "Invalid or missing access code. Please configure it in Settings.",
         "networkError": "Network error. Please check your connection.",
         "retryLimit": "Auto-retry limit reached ({max}). Please try again manually.",
@@ -244,5 +247,33 @@
         "serverDefault": "Server Default",
         "configureModels": "Configure Models...",
         "onlyVerifiedShown": "Only verified models are shown"
+        ,
+        "selectModelRequired": "Select a model"
+    }
+    ,
+    "multiAgent": {
+        "enable": "Multi-agent",
+        "agents": "Agents",
+        "selectAgents": "Select agents",
+        "selectAll": "Select all",
+        "clear": "Clear",
+        "merge": "Merge",
+        "mergeModel": "Merge model",
+        "results": "Agent Results",
+        "apply": "Apply",
+        "compare": "Compare",
+        "compareTitle": "Compare Agents",
+        "compareHint": "Side-by-side XML for selected agents.",
+        "compareLeft": "Left",
+        "compareRight": "Right",
+        "viewXml": "View XML",
+        "xmlPreview": "XML preview (read-only).",
+        "clearResults": "Clear results",
+        "merged": "Merged",
+        "noValidatedModels": "No verified models available.",
+        "statusRunning": "Running",
+        "statusSuccess": "Complete",
+        "statusError": "Error",
+        "statusIdle": "Idle"
     }
 }

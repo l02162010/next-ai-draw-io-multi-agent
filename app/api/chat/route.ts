@@ -260,6 +260,42 @@ async function handleChatRequest(req: Request): Promise<Response> {
         awsSessionToken: req.headers.get("x-aws-session-token"),
     }
 
+    // Enforce client-provided model config when required
+    if (process.env.REQUIRE_CLIENT_MODEL_CONFIG === "true") {
+        const provider = clientOverrides.provider
+        const modelId = clientOverrides.modelId
+        if (!provider || !modelId) {
+            return Response.json(
+                {
+                    error: "Client model configuration is required. Please configure a model in the UI.",
+                },
+                { status: 400 },
+            )
+        }
+
+        if (provider === "bedrock") {
+            if (
+                !clientOverrides.awsAccessKeyId ||
+                !clientOverrides.awsSecretAccessKey ||
+                !clientOverrides.awsRegion
+            ) {
+                return Response.json(
+                    {
+                        error: "AWS credentials are required for Bedrock provider.",
+                    },
+                    { status: 401 },
+                )
+            }
+        } else if (provider !== "ollama" && !clientOverrides.apiKey) {
+            return Response.json(
+                {
+                    error: "API key is required for the selected provider.",
+                },
+                { status: 401 },
+            )
+        }
+    }
+
     // Read minimal style preference from header
     const minimalStyle = req.headers.get("x-minimal-style") === "true"
 

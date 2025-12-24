@@ -163,6 +163,8 @@ interface ChatInputProps {
     selectedModelId?: string
     onModelSelect?: (modelId: string | undefined) => void
     onConfigureModels?: () => void
+    allowServerDefault?: boolean
+    submitDisabled?: boolean
 }
 
 export function ChatInput({
@@ -184,6 +186,8 @@ export function ChatInput({
     selectedModelId,
     onModelSelect = () => {},
     onConfigureModels = () => {},
+    allowServerDefault = true,
+    submitDisabled = false,
 }: ChatInputProps) {
     const dict = useDictionary()
     const {
@@ -221,7 +225,9 @@ export function ChatInput({
         if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
             e.preventDefault()
             const form = e.currentTarget.closest("form")
-            if (form && input.trim() && !isDisabled) {
+            const isSubmitDisabled =
+                submitDisabled || isDisabled || !input.trim()
+            if (form && !isSubmitDisabled) {
                 form.requestSubmit()
             }
         }
@@ -482,13 +488,18 @@ export function ChatInput({
                             onSelect={onModelSelect}
                             onConfigure={onConfigureModels}
                             disabled={isDisabled}
+                            allowServerDefault={allowServerDefault}
                         />
 
                         <div className="w-px h-5 bg-border mx-1" />
 
                         <Button
                             type="submit"
-                            disabled={isDisabled || !input.trim()}
+                            disabled={
+                                isDisabled ||
+                                submitDisabled ||
+                                !input.trim()
+                            }
                             size="sm"
                             className="h-8 px-4 rounded-xl font-medium shadow-sm"
                             aria-label={

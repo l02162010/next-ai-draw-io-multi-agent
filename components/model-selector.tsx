@@ -26,6 +26,7 @@ interface ModelSelectorProps {
     onSelect: (modelId: string | undefined) => void
     onConfigure: () => void
     disabled?: boolean
+    allowServerDefault?: boolean
 }
 
 // Map our provider names to models.dev logo names
@@ -67,6 +68,7 @@ export function ModelSelector({
     onSelect,
     onConfigure,
     disabled = false,
+    allowServerDefault = true,
 }: ModelSelectorProps) {
     const dict = useDictionary()
     const [open, setOpen] = useState(false)
@@ -97,9 +99,13 @@ export function ModelSelector({
         setOpen(false)
     }
 
+    const selectModelLabel =
+        dict.modelConfig?.selectModelRequired || "Select a model"
     const tooltipContent = selectedModel
         ? `${selectedModel.modelId} ${dict.modelConfig.clickToChange}`
-        : `${dict.modelConfig.usingServerDefault} ${dict.modelConfig.clickToChange}`
+        : allowServerDefault
+          ? `${dict.modelConfig.usingServerDefault} ${dict.modelConfig.clickToChange}`
+          : selectModelLabel
 
     return (
         <ModelSelectorRoot open={open} onOpenChange={setOpen}>
@@ -115,7 +121,9 @@ export function ModelSelector({
                     <span className="text-xs truncate">
                         {selectedModel
                             ? selectedModel.modelId
-                            : dict.modelConfig.default}
+                            : allowServerDefault
+                              ? dict.modelConfig.default
+                              : selectModelLabel}
                     </span>
                     <ChevronDown className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
                 </ButtonWithTooltip>
@@ -132,29 +140,31 @@ export function ModelSelector({
                     </ModelSelectorEmpty>
 
                     {/* Server Default Option */}
-                    <ModelSelectorGroup heading={dict.modelConfig.default}>
-                        <ModelSelectorItem
-                            value="__server_default__"
-                            onSelect={handleSelect}
-                            className={cn(
-                                "cursor-pointer",
-                                !selectedModelId && "bg-accent",
-                            )}
-                        >
-                            <Check
+                    {allowServerDefault && (
+                        <ModelSelectorGroup heading={dict.modelConfig.default}>
+                            <ModelSelectorItem
+                                value="__server_default__"
+                                onSelect={handleSelect}
                                 className={cn(
-                                    "mr-2 h-4 w-4",
-                                    !selectedModelId
-                                        ? "opacity-100"
-                                        : "opacity-0",
+                                    "cursor-pointer",
+                                    !selectedModelId && "bg-accent",
                                 )}
-                            />
-                            <Server className="mr-2 h-4 w-4 text-muted-foreground" />
-                            <ModelSelectorName>
-                                {dict.modelConfig.serverDefault}
-                            </ModelSelectorName>
-                        </ModelSelectorItem>
-                    </ModelSelectorGroup>
+                            >
+                                <Check
+                                    className={cn(
+                                        "mr-2 h-4 w-4",
+                                        !selectedModelId
+                                            ? "opacity-100"
+                                            : "opacity-0",
+                                    )}
+                                />
+                                <Server className="mr-2 h-4 w-4 text-muted-foreground" />
+                                <ModelSelectorName>
+                                    {dict.modelConfig.serverDefault}
+                                </ModelSelectorName>
+                            </ModelSelectorItem>
+                        </ModelSelectorGroup>
+                    )}
 
                     {/* Configured Models by Provider */}
                     {Array.from(groupedModels.entries()).map(

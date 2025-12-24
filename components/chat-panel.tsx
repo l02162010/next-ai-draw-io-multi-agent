@@ -1036,6 +1036,10 @@ export default function ChatPanel({
             .slice(2, 9)}`
         setSessionId(newSessionId)
         xmlSnapshotsRef.current.clear()
+        setAgentResults({})
+        setAgentRequests({})
+        setMergeResult(null)
+        setMergeRequest(null)
         // Clear localStorage with error handling
         try {
             localStorage.removeItem(STORAGE_MESSAGES_KEY)

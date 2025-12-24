@@ -1293,6 +1293,16 @@ export default function ChatPanel({
         sendChatMessage(newParts, savedXml, previousXml, sessionId)
     }
 
+    const agentResultsList = [
+        ...Object.values(agentResults),
+        ...(mergeResult ? [mergeResult] : []),
+    ]
+    const backgroundAgentModels = modelConfig.models.filter(
+        (model) =>
+            selectedAgentIds.includes(model.id) &&
+            model.id !== modelConfig.selectedModelId,
+    )
+
     // Collapsed view (desktop only)
     if (!isVisible && !isMobile) {
         return (
